@@ -1,0 +1,13 @@
+data/airflow/config
+data/airflow/plugins
+data/airflow/logs
+data/airflow/postgres-db-volume
+.env
+.terraform*
+terraform.tfstate*
+.venv
+.ipynb_checkpoints
+*.ipynb
+__pycache__
+*.parquet
+docker-compose.yaml
