@@ -46,11 +46,6 @@ resource "aws_subnet" "public" {
   }
 }
 
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.pub_sub.id
-}
-
 resource "aws_route_table" "pub_sub" {
   vpc_id = aws_vpc.main.id
 
@@ -62,6 +57,11 @@ resource "aws_route_table" "pub_sub" {
   tags = {
     Name = "${var.vpc_name}-pub-subnet-rt"
   }
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.pub_sub.id
 }
 
 resource "aws_internet_gateway" "pub-subnet" {
@@ -78,6 +78,8 @@ resource "aws_eip" "nat" {
   tags = {
     Name = "${var.vpc_name}-nat-eip"
   }
+
+  depends_on = [aws_internet_gateway.pub-subnet]
 }
 
 resource "aws_nat_gateway" "gw" {

@@ -13,3 +13,9 @@ variable "master_password" {
 variable "vpc_id" {
   type = string
 }
+variable "priv_subnet_ids" {
+  type = list(string)
+}
+variable "pub_subnet_id" {
+  type = string
+}

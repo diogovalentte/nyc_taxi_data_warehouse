@@ -40,7 +40,9 @@ def create_mwaa_connections(env_name: str, connections: list[dict[str, str]]) ->
             )
 
 
-def get_redshift_conn(cluster_name: str, master_username: str, master_password: str):
+def get_redshift_conn(
+    cluster_name: str, dbname: str, master_username: str, master_password: str
+):
     redshift = session.client("redshift")
     clusters = redshift.describe_clusters(
         ClusterIdentifier=cluster_name,
@@ -62,7 +64,7 @@ def get_redshift_conn(cluster_name: str, master_username: str, master_password: 
         port=cluster["Endpoint"]["Port"],
         user=master_username,
         password=master_password,
-        dbname=cluster["DBName"],
+        dbname=dbname,
     )
 
 
@@ -124,10 +126,12 @@ def main():
     )
 
     redshift_cluster_name = os.environ["TF_VAR_redshift_cluster_name"]
+    redshift_dbname = os.environ["TF_VAR_redshift_database_name"]
     redshift_master_username = os.environ["TF_VAR_redshift_master_username"]
     redshift_master_password = os.environ["TF_VAR_redshift_master_password"]
     redshift_conn = get_redshift_conn(
         redshift_cluster_name,
+        redshift_dbname,
         redshift_master_username,
         redshift_master_password,
     )

@@ -75,4 +75,6 @@ module "redshift" {
   master_username = var.redshift_master_username
   master_password = var.redshift_master_password
   vpc_id          = module.vpc.vpc_id
+  priv_subnet_ids = module.vpc.priv_subnet_ids
+  pub_subnet_id   = module.vpc.pub_subnet_id
 }
