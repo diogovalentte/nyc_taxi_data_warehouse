@@ -1,6 +1,6 @@
 resource "aws_redshift_cluster" "main" {
   cluster_identifier        = var.cluster_name
-  database_name             = var.database_name
+  database_name             = var.dbname
   master_username           = var.master_username
   master_password           = var.master_password
   node_type                 = "ra3.large"

@@ -22,3 +22,6 @@ variable "bucket_name" {
 variable "emr_cluster_arn" {
   type = string
 }
+variable "account_id" {
+  type = string
+}

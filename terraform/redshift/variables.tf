@@ -1,7 +1,7 @@
 variable "cluster_name" {
   type = string
 }
-variable "database_name" {
+variable "dbname" {
   type = string
 }
 variable "master_username" {

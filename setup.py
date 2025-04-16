@@ -40,9 +40,7 @@ def create_mwaa_connections(env_name: str, connections: list[dict[str, str]]) ->
             )
 
 
-def get_redshift_conn(
-    cluster_name: str, dbname: str, master_username: str, master_password: str
-):
+def get_redshift_cluster_addr(cluster_name: str):
     redshift = session.client("redshift")
     clusters = redshift.describe_clusters(
         ClusterIdentifier=cluster_name,
@@ -59,18 +57,23 @@ def get_redshift_conn(
                 f"Found multiple Redshift clusters with name {cluster_name}"
             )
 
-    return psycopg2.connect(
-        host=cluster["Endpoint"]["Address"],
-        port=cluster["Endpoint"]["Port"],
-        user=master_username,
-        password=master_password,
-        dbname=dbname,
-    )
+    return cluster["Endpoint"]["Address"], cluster["Endpoint"]["Port"]
 
 
 def create_db_tables(
-    conn: psycopg2.extensions.connection,
+    host: str,
+    port: str,
+    dbname: str,
+    username: str,
+    password: str,
 ):
+    conn = psycopg2.connect(
+        host=host,
+        port=port,
+        dbname=dbname,
+        user=username,
+        password=password,
+    )
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -81,6 +84,8 @@ def create_db_tables(
             on_scene_datetime TIMESTAMP,
             pickup_datetime TIMESTAMP,
             dropoff_datetime TIMESTAMP,
+            pu_location_id INTEGER,
+            do_location_id INTEGER,
             sales_tax FLOAT,
             congestion_surcharge FLOAT,
             airport_fee FLOAT,
@@ -105,37 +110,63 @@ def main():
             "key": "nyc_taxi_dw_emr_cluster_name",
             "value": emr_cluster_name,
         },
-    ]
-    create_mwaa_variables(
-        env_name=os.environ["TF_VAR_mwaa_env_name"],
-        variables=mwaa_variables,
-    )
-
-    mwaa_connections = [
         {
-            "connection_id": "aws_default",
-            "conn_type": "aws",
-            "login": os.environ["TF_VAR_aws_access_key_id"],
-            "password": os.environ["TF_VAR_aws_secret_access_key"],
-            "extra": '{"region_name": "' + os.environ["TF_VAR_aws_region"] + '"}',
-        }
+            "key": "nyc_taxi_dw_region_name",
+            "value": os.environ["TF_VAR_aws_region"],
+        },
+        {
+            "key": "nyc_taxi_dw_redshift_dbname",
+            "value": os.environ["TF_VAR_redshift_dbname"],
+        },
+        {
+            "key": "nyc_taxi_dw_redshift_table",
+            "value": "fhvhv_tripdata",
+        },
     ]
-    create_mwaa_connections(
-        env_name=os.environ["TF_VAR_mwaa_env_name"],
-        connections=mwaa_connections,
-    )
+    # create_mwaa_variables(
+    #     env_name=os.environ["TF_VAR_mwaa_env_name"],
+    #     variables=mwaa_variables,
+    # )
 
     redshift_cluster_name = os.environ["TF_VAR_redshift_cluster_name"]
     redshift_dbname = os.environ["TF_VAR_redshift_database_name"]
     redshift_master_username = os.environ["TF_VAR_redshift_master_username"]
     redshift_master_password = os.environ["TF_VAR_redshift_master_password"]
-    redshift_conn = get_redshift_conn(
+    redshift_host, redshift_port = get_redshift_cluster_addr(
         redshift_cluster_name,
+    )
+
+    mwaa_connections = [
+        {
+            "connection_id": "nyc_taxi_dw_aws",
+            "conn_type": "aws",
+            "login": os.environ["TF_VAR_aws_access_key_id"],
+            "password": os.environ["TF_VAR_aws_secret_access_key"],
+            "extra": '{"region_name": "'
+            + os.environ["TF_VAR_aws_region"]
+            + '"}',  # for some reason mwaa dag can't read the extra field
+        },
+        {
+            "connection_id": "nyc_taxi_dw_redshift",
+            "conn_type": "redshift",
+            "host": redshift_host,
+            "port": redshift_port,
+            "login": redshift_master_username,
+            "password": redshift_master_password,
+        },
+    ]
+    # create_mwaa_connections(
+    #     env_name=os.environ["TF_VAR_mwaa_env_name"],
+    #     connections=mwaa_connections,
+    # )
+
+    create_db_tables(
+        redshift_host,
+        redshift_port,
         redshift_dbname,
         redshift_master_username,
         redshift_master_password,
     )
-    create_db_tables(redshift_conn)
 
 
 if __name__ == "__main__":

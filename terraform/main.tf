@@ -29,6 +29,7 @@ module "mwaa" {
   bucket_arn  = module.s3.bucket_arn
   bucket_name = var.bucket_name
 
+  account_id = data.aws_caller_identity.current.account_id
   aws_region = var.aws_region
 
   priv_subnet_ids = module.vpc.priv_subnet_ids
@@ -46,6 +47,7 @@ module "emr" {
   source = "./emr"
 
   bucket_name = var.bucket_name
+  bucket_arn  = module.s3.bucket_arn
 
   subnet_id = module.vpc.pub_subnet_id
   vpc_id    = module.vpc.vpc_id
@@ -71,10 +73,12 @@ module "redshift" {
   source = "./redshift"
 
   cluster_name    = var.redshift_cluster_name
-  database_name   = var.redshift_database_name
+  dbname          = var.redshift_dbname
   master_username = var.redshift_master_username
   master_password = var.redshift_master_password
   vpc_id          = module.vpc.vpc_id
   priv_subnet_ids = module.vpc.priv_subnet_ids
   pub_subnet_id   = module.vpc.pub_subnet_id
 }
+
+data "aws_caller_identity" "current" {}

@@ -1,25 +1,21 @@
 resource "aws_s3_object" "requirements" {
-  bucket = var.bucket_name
-  key    = "airflow/requirements.txt"
-  source = "../data/airflow/dags/requirements.txt"
+  bucket                 = var.bucket_name
+  key                    = "airflow/requirements.txt"
+  source                 = "../data/airflow/dags/requirements.txt"
+  server_side_encryption = "AES256"
+  bucket_key_enabled     = true
 
   etag = filemd5("../data/airflow/dags/requirements.txt")
 }
 
 resource "aws_s3_object" "dag" {
-  bucket = var.bucket_name
-  key    = "airflow/dags/save_nyc_data_to_s3.py"
-  source = "../data/airflow/dags/save_nyc_data_to_s3.py"
+  bucket                 = var.bucket_name
+  key                    = "airflow/dags/save_nyc_data_to_s3.py"
+  source                 = "../data/airflow/dags/save_nyc_data_to_s3.py"
+  server_side_encryption = "AES256"
+  bucket_key_enabled     = true
 
   etag = filemd5("../data/airflow/dags/save_nyc_data_to_s3.py")
-}
-
-resource "aws_s3_object" "etl" {
-  bucket = var.bucket_name
-  key    = "emr/jobs/spark/etl.py"
-  source = "../data/emr/etl.py"
-
-  etag = filemd5("../data/emr/etl.py")
 }
 
 resource "aws_mwaa_environment" "mwaa" {
@@ -102,7 +98,7 @@ resource "aws_iam_policy" "iam_policy" {
         {
           "Effect"   = "Allow",
           "Action"   = "airflow:PublishMetrics",
-          "Resource" = "arn:aws:airflow:${var.aws_region}:*:environment/MyAirflowEnvironment"
+          "Resource" = "arn:aws:airflow:${var.aws_region}:*:environment/${var.env_name}"
         },
         {
           "Effect"   = "Deny",
@@ -115,11 +111,12 @@ resource "aws_iam_policy" "iam_policy" {
             "s3:GetObject*",
             "s3:PutObject*",
             "s3:GetBucket*",
+            "s3:GetEncryptionConfiguration",
             "s3:List*"
           ],
           "Resource" = [
             "${var.bucket_arn}",
-            "${var.bucket_arn}/airflow/*",
+            "${var.bucket_arn}/*",
           ]
         },
         {
@@ -184,26 +181,19 @@ resource "aws_iam_policy" "iam_policy" {
             "sqs:ReceiveMessage",
             "sqs:SendMessage"
           ],
-          "Resource" = "arn:aws:sqs:${var.aws_region}:*:airflow-celery-*"
+          "Resource" = "arn:aws:sqs:${var.aws_region}:${var.account_id}:airflow-celery-*"
+        },
+        {
+          "Effect" : "Allow",
+          "Action" : [
+            "kms:Decrypt",
+            "kms:DescribeKey",
+            "kms:GenerateDataKey*",
+            "kms:Encrypt"
+
+          ],
+          "NotResource" : "arn:aws:kms:*:${var.account_id}:key/*",
         }
-        # {
-        #   "Effect" = "Allow",
-        #   "Action" = [
-        #     "kms:Decrypt",
-        #     "kms:DescribeKey",
-        #     "kms:GenerateDataKey*",
-        #     "kms:Encrypt"
-        #   ],
-        #   "Resource" = "arn:aws:kms:${var.aws_region}:*:key/*"
-        #   "NotResource" : "arn:aws:kms:*:*:key/*",
-        #   "Condition" : {
-        #     "StringLike" : {
-        #       "kms:ViaService" : [
-        #         "sqs.${var.aws_region}.amazonaws.com"
-        #       ]
-        #     }
-        #   }
-        # }
       ]
     }
   )

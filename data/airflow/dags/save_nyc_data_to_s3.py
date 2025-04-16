@@ -19,18 +19,33 @@ NYC_TAXI_SITE_URL = "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.pag
 
 logger = logging.getLogger(__name__)
 
+aws_conn = BaseHook.get_connection("nyc_taxi_dw_aws")
+redshift_conn = BaseHook.get_connection("nyc_taxi_dw_redshift")
 
-def get_boto3_client(service_name, conn_id="aws_default"):
-    conn = BaseHook.get_connection(conn_id)
-    extras = conn.extra_dejson
-    logger.info(extras)
 
+def get_boto3_client(service_name):
     session = boto3.session.Session(
-        aws_access_key_id=conn.login,
-        aws_secret_access_key=conn.password,
-        region_name=extras["region_name"],
+        aws_access_key_id=aws_conn.login,
+        aws_secret_access_key=aws_conn.password,
+        region_name=Variable.get("nyc_taxi_dw_region_name"),
     )
+
     return session.client(service_name)
+
+
+def get_parquet_s3_key(
+    url: str | None = None, year: int | None = None, month: int | None = None
+):
+    if url is not None:
+        filename = url.split("/")[-1]
+        tmp_year = filename.split("_")[-1].split("-")[0]
+        key = f"raw/fhvhv/{tmp_year}/{filename}"
+    elif year is not None and month is not None:
+        key = f"raw/fhvhv/{year}/fhvhv_tripdata_{year}-{month:02d}.parquet"
+    else:
+        raise ValueError("Either url or year and month must be provided")
+
+    return key
 
 
 with DAG(
@@ -46,10 +61,8 @@ with DAG(
             raise ValueError("execution_date is required")
         year = execution_date.year
         month = execution_date.month
-        year = 2025
-        month = 1
 
-        key = f"raw/fhvhv/{year}/{month:02d}/fhvhv_tripdata.parquet"
+        key = get_parquet_s3_key(year=year, month=month)
         bucket_name = Variable.get("nyc_taxi_dw_bucket_name")
         s3 = get_boto3_client("s3")
 
@@ -70,8 +83,7 @@ with DAG(
             raise ValueError("execution_date is required")
         year = execution_date.year
         month = execution_date.month
-        year = 2025
-        month = 1
+
         filename = f"fhvhv_tripdata_{year}-{month:02d}.parquet"
 
         source_html = requests.get(NYC_TAXI_SITE_URL).text
@@ -83,14 +95,7 @@ with DAG(
         return str(fhvhv_urls[0]).strip()
 
     @task()
-    def save_to_s3(url, execution_date=None):
-        if execution_date is None:
-            raise ValueError("execution_date is required")
-        year = execution_date.year
-        month = execution_date.month
-        year = 2025
-        month = 1
-
+    def save_to_s3(url):
         response = requests.get(url)
         try:
             response.raise_for_status()
@@ -101,8 +106,8 @@ with DAG(
         except Exception as ex:
             raise ex
 
+        key = get_parquet_s3_key(url=url)
         file_obj = BytesIO(response.content)
-        key = f"raw/fhvhv/{year}/{month:02d}/fhvhv_tripdata.parquet"
         bucket_name = Variable.get("nyc_taxi_dw_bucket_name")
 
         s3 = get_boto3_client("s3")
@@ -137,9 +142,18 @@ with DAG(
     job_flow_id = get_job_flow_id()
 
     check_file_exists >> parquet_file_key >> job_flow_id
+    parquet_file_key = (
+        "s3://diogovalentium-nyc-taxi-dw/raw/fhvhv/2025/fhvhv_tripdata_2025-01.parquet"
+    )
 
     @task()
-    def build_emr_steps(parquet_file_key):
+    def build_emr_steps():
+        logger.info(redshift_conn.host)
+        logger.info(redshift_conn.port)
+        logger.info(redshift_conn.login)
+        logger.info(redshift_conn.password)
+        logger.info(aws_conn.login)
+        logger.info(aws_conn.password)
         return [
             {
                 "Name": "nyc_taxi_dw",
@@ -151,25 +165,47 @@ with DAG(
                         "--deploy-mode",
                         "cluster",
                         f"s3://{Variable.get('nyc_taxi_dw_bucket_name')}/emr/jobs/spark/etl.py",
-                        "--arg1",
+                        "--aws_access_key_id",
+                        aws_conn.login,
+                        "--aws_secret_access_key",
+                        aws_conn.password,
+                        "--aws_region",
+                        Variable.get("nyc_taxi_dw_region_name"),
+                        "--s3_bucket_name",
+                        Variable.get("nyc_taxi_dw_bucket_name"),
+                        "--redshift_host",
+                        redshift_conn.host,
+                        "--redshift_port",
+                        str(redshift_conn.port),
+                        "--redshift_dbname",
+                        Variable.get("nyc_taxi_dw_redshift_dbname"),
+                        "--redshift_username",
+                        redshift_conn.login,
+                        "--redshift_password",
+                        redshift_conn.password,
+                        "--redshift_table",
+                        Variable.get("nyc_taxi_dw_redshift_table"),
+                        "--input_file_uri",
                         parquet_file_key,
                     ],
                 },
             }
         ]
 
+    emr_steps = build_emr_steps()
+
     step_adder = EmrAddStepsOperator(
         task_id="add_steps",
-        job_flow_id="{{ task_instance.xcom_pull(task_ids='get_job_flow_id') }}",
-        steps="{{ task_instance.xcom_pull(task_ids='build_emr_steps') }}",
+        job_flow_id="{{ ti.xcom_pull(task_ids='get_job_flow_id') }}",
+        steps="{{ ti.xcom_pull(task_ids='build_emr_steps') }}",
         aws_conn_id="aws_default",
     )
 
     step_checker = EmrStepSensor(
         task_id="watch_step",
-        job_flow_id="{{ task_instance.xcom_pull('get_job_flow_id') }}",
-        step_id="{{ task_instance.xcom_pull(task_ids='add_steps', key='return_value')[0] }}",
+        job_flow_id="{{ ti.xcom_pull('get_job_flow_id') }}",
+        step_id="{{ ti.xcom_pull(task_ids='add_steps', key='return_value')[0] }}",
         aws_conn_id="aws_default",
     )
 
-    job_flow_id >> step_adder >> step_checker
+    job_flow_id >> emr_steps >> step_adder >> step_checker

@@ -1,3 +1,13 @@
+resource "aws_s3_object" "etl" {
+  bucket                 = var.bucket_name
+  key                    = "emr/jobs/spark/etl.py"
+  source                 = "../data/emr/etl.py"
+  server_side_encryption = "AES256"
+  bucket_key_enabled     = true
+
+  etag = filemd5("../data/emr/etl.py")
+}
+
 resource "aws_emr_cluster" "cluster" {
   name          = var.cluster_name
   release_label = "emr-7.8.0"
@@ -37,10 +47,12 @@ resource "aws_emr_cluster" "cluster" {
   auto_termination_policy {
     idle_timeout = 14400 # 4 hours
   }
+
+  depends_on = [aws_s3_object.etl]
 }
 
 resource "aws_security_group" "sg" {
-  name   = "${var.cluster_name}-sg"
+  name   = "${var.cluster_name}-emr-sg"
   vpc_id = var.vpc_id
 }
 
@@ -59,7 +71,7 @@ resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4" {
 }
 
 resource "aws_iam_role" "iam_emr_service_role" {
-  name = "${var.cluster_name}-service-role"
+  name = "${var.cluster_name}-emr-service-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -135,7 +147,7 @@ resource "aws_iam_service_linked_role" "ec2_spot" {
 }
 
 resource "aws_iam_role" "iam_instances_role" {
-  name = "${var.cluster_name}-instances-role"
+  name = "${var.cluster_name}-emr-instances-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -173,10 +185,28 @@ resource "aws_iam_policy" "iam_emr_instances_policy" {
             "elasticmapreduce:ListInstances",
             "elasticmapreduce:ListSteps",
             "rds:Describe*",
-            "s3:*",
+          ]
+        },
+        {
+          "Effect"   = "Deny",
+          "Action"   = "s3:ListAllMyBuckets",
+          "Resource" = "*",
+        },
+        {
+          "Effect" = "Allow",
+          "Action" = [
+            "s3:GetObject*",
+            "s3:PutObject*",
+            "s3:GetBucket*",
+            "s3:GetEncryptionConfiguration",
+            "s3:List*"
+          ],
+          "Resource" = [
+            "${var.bucket_arn}",
+            "${var.bucket_arn}/*",
           ]
         }
       ]
-    }
+    },
   )
 }

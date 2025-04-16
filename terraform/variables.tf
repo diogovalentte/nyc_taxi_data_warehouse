@@ -51,7 +51,7 @@ variable "mwaa_subnet2_cidr" {
 variable "redshift_cluster_name" {
   type = string
 }
-variable "redshift_database_name" {
+variable "redshift_dbname" {
   type = string
 }
 variable "redshift_master_username" {
