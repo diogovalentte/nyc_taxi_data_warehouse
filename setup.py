@@ -123,10 +123,10 @@ def main():
             "value": "fhvhv_tripdata",
         },
     ]
-    # create_mwaa_variables(
-    #     env_name=os.environ["TF_VAR_mwaa_env_name"],
-    #     variables=mwaa_variables,
-    # )
+    create_mwaa_variables(
+        env_name=os.environ["TF_VAR_mwaa_env_name"],
+        variables=mwaa_variables,
+    )
 
     redshift_cluster_name = os.environ["TF_VAR_redshift_cluster_name"]
     redshift_dbname = os.environ["TF_VAR_redshift_database_name"]
@@ -155,10 +155,10 @@ def main():
             "password": redshift_master_password,
         },
     ]
-    # create_mwaa_connections(
-    #     env_name=os.environ["TF_VAR_mwaa_env_name"],
-    #     connections=mwaa_connections,
-    # )
+    create_mwaa_connections(
+        env_name=os.environ["TF_VAR_mwaa_env_name"],
+        connections=mwaa_connections,
+    )
 
     create_db_tables(
         redshift_host,
