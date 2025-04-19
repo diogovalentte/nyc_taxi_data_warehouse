@@ -75,3 +75,13 @@ python3 setup.py
 
 6. Go to the Airflow UI and start the DAG `save_nyc_data_to_s3`. It will run the tasks in order. You can check the logs of each task to see the progress.
 7. Once the DAG is finished, you can check the Redshift tables to see if the data was loaded correctly. You can use the AWS Console to connect to the Redshift cluster and run queries.
+
+# Destroying
+
+## Steps
+
+1. Destroy the AWS infrastructure using Terraform. This will also delete the S3 bucket and all the data in it.
+
+```bash
+terraform destroy
+```
